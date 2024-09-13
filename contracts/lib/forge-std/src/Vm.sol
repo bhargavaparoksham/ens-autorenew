@@ -279,6 +279,9 @@ interface VmSafe {
         pure
         returns (uint256 privateKey);
 
+    /// Derives secp256r1 public key from the provided `privateKey`.
+    function publicKeyP256(uint256 privateKey) external pure returns (uint256 publicKeyX, uint256 publicKeyY);
+
     /// Adds a private key to the local forge wallet and returns the address.
     function rememberKey(uint256 privateKey) external returns (address keyAddr);
 
@@ -555,6 +558,9 @@ interface VmSafe {
 
     /// Record all the transaction logs.
     function recordLogs() external;
+
+    /// Reset gas metering (i.e. gas usage is set to gas limit).
+    function resetGasMetering() external;
 
     /// Resumes gas metering (i.e. gas usage is counted again). Noop if already on.
     function resumeGasMetering() external;
@@ -1431,6 +1437,9 @@ interface VmSafe {
     /// If the condition is false, discard this run's fuzz inputs and generate new ones.
     function assume(bool condition) external pure;
 
+    /// Discard this run's fuzz inputs and generate new ones if next call reverted.
+    function assumeNoRevert() external pure;
+
     /// Writes a breakpoint to jump to in the debugger.
     function breakpoint(string calldata char) external;
 
@@ -1540,6 +1549,9 @@ interface VmSafe {
     /// Compute the address a contract will be deployed at for a given deployer address and nonce.
     function computeCreateAddress(address deployer, uint256 nonce) external pure returns (address);
 
+    /// Utility cheatcode to copy storage of `from` contract to another `to` contract.
+    function copyStorage(address from, address to) external;
+
     /// Returns ENS namehash for provided string.
     function ensNamehash(string calldata name) external pure returns (bytes32);
 
@@ -1549,6 +1561,10 @@ interface VmSafe {
     /// Labels an address in call traces.
     function label(address account, string calldata newLabel) external;
 
+    /// Pauses collection of call traces. Useful in cases when you want to skip tracing of
+    /// complex calls which are not useful for debugging.
+    function pauseTracing() external view;
+
     /// Returns a random `address`.
     function randomAddress() external returns (address);
 
@@ -1557,6 +1573,12 @@ interface VmSafe {
 
     /// Returns random uin256 value between the provided range (=min..=max).
     function randomUint(uint256 min, uint256 max) external returns (uint256);
+
+    /// Unpauses collection of call traces.
+    function resumeTracing() external view;
+
+    /// Utility cheatcode to set arbitrary storage for given target address.
+    function setArbitraryStorage(address target) external;
 
     /// Encodes a `bytes` value to a base64url string.
     function toBase64URL(bytes calldata data) external pure returns (string memory);
@@ -1685,6 +1707,14 @@ interface Vm is VmSafe {
     /// Mocks a call to an address with a specific `msg.value`, returning specified data.
     /// Calldata match takes precedence over `msg.value` in case of ambiguity.
     function mockCall(address callee, uint256 msgValue, bytes calldata data, bytes calldata returnData) external;
+
+    /// Whenever a call is made to `callee` with calldata `data`, this cheatcode instead calls
+    /// `target` with the same calldata. This functionality is similar to a delegate call made to
+    /// `target` contract from `callee`.
+    /// Can be used to substitute a call to a function with another implementation that captures
+    /// the primary logic of the original function but is easier to reason about.
+    /// If calldata is not a strict match then partial match by selector is attempted.
+    function mockFunction(address callee, address target, bytes calldata data) external;
 
     /// Sets the *next* call's `msg.sender` to be the input address.
     function prank(address msgSender) external;
@@ -1855,10 +1885,13 @@ interface Vm is VmSafe {
     /// Same as the previous method, but also checks supplied address against emitting contract.
     function expectEmit(address emitter) external;
 
+    /// Expects an error on next call that starts with the revert data.
+    function expectPartialRevert(bytes4 revertData) external;
+
     /// Expects an error on next call with any revert data.
     function expectRevert() external;
 
-    /// Expects an error on next call that starts with the revert data.
+    /// Expects an error on next call that exactly matches the revert data.
     function expectRevert(bytes4 revertData) external;
 
     /// Expects an error on next call that exactly matches the revert data.

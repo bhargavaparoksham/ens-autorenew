@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+
 interface IENSRegistrar {
-    function renew(uint256 id, uint256 duration) external returns (uint256);
+    function renew(uint256 id, uint256 duration) external payable returns (uint256);
     function nameExpires(uint256 id) external view returns (uint256);
 }
 
 contract ENSAutoRenew {
     IENSRegistrar public registrar;
+    IERC20 public feeToken;
     address public owner;
 
     struct EnsRecord {
         uint256 expiryDate;
         uint256 renewalFees;
-        uint256 gasFees;
         address user;
     }
 
@@ -24,33 +26,37 @@ contract ENSAutoRenew {
         _;
     }
 
-    event ENSRegistered(bytes32 indexed ensLabel, uint256 expiryDate, uint256 renewalFees, uint256 gasFees);
-    event ENSRenewed(bytes32 indexed ensLabel, uint256 newExpiryDate);
+    event ENSAutoRenewalRegistered(uint256 indexed id, uint256 expiryDate);
+    event ENSRenewed(uint256 indexed id, uint256 newExpiryDate);
 
-    constructor(address _registrar) {
+    constructor(address _registrar, address _feeToken) {
         registrar = IENSRegistrar(_registrar);
         owner = msg.sender;
+        feeToken = IERC20(_feeToken);
     }
 
-    function registerEnsRenewal(uint256 id, uint256 renewalFees, uint256 gasFees, address user) external payable {
+    function registerEnsRenewal(uint256 id, uint256 renewalFees, address user) external payable {
         uint256 expiryDate = registrar.nameExpires(id);
         require(expiryDate > block.timestamp, "ENS already expired.");
 
-        ensRecords[id] = EnsRecord(expiryDate, renewalFees, gasFees, user);
+        ensRecords[id] = EnsRecord(expiryDate, renewalFees, user);
+        feeToken.approve(address(this), renewalFees);
 
-        // Approve renewal and gas fees needs to be added
+        emit ENSAutoRenewalRegistered(id, expiryDate);
     }
 
     function renewEnsName(uint256 id) external {
         EnsRecord storage record = ensRecords[id];
         uint256 daysToExpiry = (record.expiryDate - block.timestamp) / 1 days;
         require(daysToExpiry <= 2, "ENS not yet eligible for renewal.");
+        feeToken.transferFrom(msg.sender, address(this), record.renewalFees);
+        
+        uint256 etherAmount = 0.01 ether; // make it dynamic
 
-        // Deduct renewal and gas fees from the user's balance nees to be added
-        // proper checks for the payment needs to be added
+        registrar.renew{value: etherAmount}(id, 365 days); 
+        record.expiryDate = registrar.nameExpires(id); 
 
-        registrar.renew(id, 365 days); // Renew for 1 year
-        record.expiryDate = registrar.nameExpires(id); // Update the stored expiry date
+        emit ENSRenewed(id, record.expiryDate);
     }
 
     function withdraw(uint256 amount) external onlyOwner {
