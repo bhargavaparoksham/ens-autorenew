@@ -14,20 +14,29 @@ contract ENSAutoRenew {
         uint256 expiryDate;
         uint256 renewalFees;
         uint256 gasFees;
+        address user;
     }
 
-    mapping(uint256 => EnsRecord) public ensRecords; // Mapping from ENS label to record
+    mapping(uint256 => EnsRecord) public ensRecords; 
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only contract owner can call this");
+        _;
+    }
+
+    event ENSRegistered(bytes32 indexed ensLabel, uint256 expiryDate, uint256 renewalFees, uint256 gasFees);
+    event ENSRenewed(bytes32 indexed ensLabel, uint256 newExpiryDate);
 
     constructor(address _registrar) {
         registrar = IENSRegistrar(_registrar);
         owner = msg.sender;
     }
 
-    function registerEnsRenewal(uint256 id, uint256 renewalFees, uint256 gasFees) external payable {
+    function registerEnsRenewal(uint256 id, uint256 renewalFees, uint256 gasFees, address user) external payable {
         uint256 expiryDate = registrar.nameExpires(id);
         require(expiryDate > block.timestamp, "ENS already expired.");
 
-        ensRecords[id] = EnsRecord(expiryDate, renewalFees, gasFees);
+        ensRecords[id] = EnsRecord(expiryDate, renewalFees, gasFees, user);
 
         // Approve renewal and gas fees needs to be added
     }
@@ -42,5 +51,10 @@ contract ENSAutoRenew {
 
         registrar.renew(id, 365 days); // Renew for 1 year
         record.expiryDate = registrar.nameExpires(id); // Update the stored expiry date
+    }
+
+    function withdraw(uint256 amount) external onlyOwner {
+        require(amount <= address(this).balance, "Insufficient balance");
+        payable(owner).transfer(amount);
     }
 }
